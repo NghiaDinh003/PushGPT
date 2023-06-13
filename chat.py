@@ -1,34 +1,26 @@
-from firestore_utils import load_conversation_by_id
-from utils import get_key_from_params
+from dotenv import load_dotenv
+from firestore_utils import load_conversation_by_id, clear_user_history
+from google_utils import sign_out_google, decode_token_from_params
+import streamlit as st
 from render_auth import render_auth
 from render_body import render_body
 from render_my_conversations import render_my_conversations
-import streamlit as st
-from firestore_utils import clear_user_history
-from utils import get_cid_from_session
-import base64
-import json
-from google_utils import sign_out_google, decode_token_from_params
-
-from dotenv import load_dotenv
+from utils import get_key_from_params, get_cid_from_session
 
 load_dotenv()
-
 
 DEFAULT_MODEL = "gpt-3.5-turbo"
 
 
-def get_model_from_conversation(conversation: dict) -> str:
-    """Extracts the model name from a conversation dictionary"""
-    return conversation.get("model_name")
-
-
 def load_and_store_conversation(st, cid: str):
-    """Loads a conversation and stores it in the session state"""
     conversation = load_conversation_by_id(cid).to_dict()
     if conversation:
         st.session_state["conversation"] = conversation
         st.session_state["model"] = get_model_from_conversation(conversation)
+
+
+def get_model_from_conversation(conversation: dict) -> str:
+    return conversation.get("model_name")
 
 
 def controller():
@@ -38,24 +30,43 @@ def controller():
     if token_dict:
         st.session_state["token"] = token_dict
 
-    # TODO: save params to session if applicable
-
-    # set model in session if specified in params
     model_from_param = get_key_from_params(st, "model")
     if model_from_param:
         st.session_state["model"] = model_from_param
 
-    # load conversation if cid is specified in session
     cid = get_cid_from_session(st)
     if cid:
         load_and_store_conversation(st, cid)
 
-    # set default model if no model specified
     if "model" not in st.session_state:
         st.session_state["model"] = DEFAULT_MODEL
+    if "saved_questions" not in st.session_state:
+        st.session_state["saved_questions"] = []
 
 
-DEFAULT_CONVERSATION = {}
+def render_sidebar(sidebar):
+    # Tính năng mới: lưu và tải câu hỏi
+    sidebar.title("Danh sách câu hỏi")
+    save_question_checkbox = sidebar.checkbox("Lưu câu hỏi")
+    question_input = sidebar.text_input("Nhập câu hỏi:")
+
+    if save_question_checkbox:
+        if question_input:
+            st.session_state["saved_questions"].append(question_input)
+            question_input = ''
+
+    if st.session_state["saved_questions"]:
+        sidebar.markdown("### Các câu hỏi đã lưu:")
+        for saved_question in st.session_state["saved_questions"]:
+            if sidebar.button(saved_question):
+                question_input = saved_question
+
+    render_new_chat(sidebar)
+    sidebar.divider()
+    render_auth(st)
+    render_profile(sidebar)
+    sidebar.divider()
+    render_history_menu(sidebar)
 
 
 def render_new_chat(sidebar):
